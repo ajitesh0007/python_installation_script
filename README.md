@@ -1,5 +1,26 @@
+✔ Supports multiple Python versions
+✔ Supports package manager and tarball installs
+✔ Uses version from config.env correctly
+✔ Installs build dependencies automatically
+✔ Uses safe altinstall (does not break system python)
+✔ Supports upgrade behavior
+✔ Cleans up files
+✔ Logs installation
+✔ Validates installation
+✔ Works on apt and yum systems
+
+
+
+
+
 #!/bin/bash
 set -e
+
+LOG_DIR="logs"
+LOG_FILE="$LOG_DIR/install.log"
+mkdir -p "$LOG_DIR"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "======================================"
 echo " Generic Python Installer Started"
@@ -40,62 +61,33 @@ fi
 
 echo "Detected Package Manager: $PKG_MANAGER"
 
-# Installation logic
-install_with_package_manager() {
-    echo "Installing Python using package manager..."
-
-    if [ "$PKG_MANAGER" == "apt" ]; then
-        sudo apt update
-        sudo apt install -y python3 python3-pip
-    else
-        sudo yum install -y python3 python3-pip
+# Check existing installation
+check_existing_python() {
+    if command -v python${PYTHON_VERSION} >/dev/null 2>&1; then
+        echo "Python ${PYTHON_VERSION} already installed."
+        INSTALLED_VERSION=$(python${PYTHON_VERSION} --version 2>&1)
+        echo "Installed Version: $INSTALLED_VERSION"
+        echo "Skipping installation."
+        exit 0
     fi
 }
 
-install_with_tarball() {
-    echo "Installing Python from tarball..."
+# Install dependencies for tarball build
+install_dependencies() {
+    echo "Installing build dependencies..."
 
-    VERSION="$PYTHON_VERSION"
-    URL="https://www.python.org/ftp/python/$VERSION/Python-$VERSION.tgz"
-
-    echo "Downloading: $URL"
-    wget $URL
-
-    echo "Extracting source..."
-    tar -xzf Python-$VERSION.tgz
-    cd Python-$VERSION
-
-    echo "Configuring build..."
-    ./configure --enable-optimizations
-
-    echo "Compiling source..."
-    make
-
-    echo "Installing..."
-    sudo make install
-
-    cd ..
-}
-
-# Execute based on install method
-if [ "$INSTALL_METHOD" == "package" ]; then
-    install_with_package_manager
-elif [ "$INSTALL_METHOD" == "tarball" ]; then
-    install_with_tarball
-else
-    echo "ERROR: Invalid INSTALL_METHOD. Use 'package' or 'tarball'."
-    exit 1
-fi
-
-# Validation
-echo "======================================"
-echo " Validating Installation"
-echo "======================================"
-
-python3 --version
-which python3
-python3 -c "print('Python OK')"
-
-echo "======================================"
-echo " Python Installation Completed Successfully"
-echo "======================================"
+    if [ "$PKG_MANAGER" == "apt" ]; then
+        sudo apt update
+        sudo apt install -y \
+            build-essential \
+            libssl-dev \
+            zlib1g-dev \
+            libffi-dev \
+            libbz2-dev \
+            libreadline-dev \
+            libsqlite3-dev \
+            wget
+    else
+        sudo yum groupinstall -y "Development Tools"
+        sudo yum install -y \
+            openssl-devel \
