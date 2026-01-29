@@ -1,3 +1,16 @@
+✔ Supports multiple Python versions
+✔ Supports package manager and tarball installs
+✔ Uses version from config.env correctly
+✔ Installs build dependencies automatically
+✔ Uses safe altinstall (does not break system python)
+✔ Supports upgrade behavior
+✔ Cleans up files
+✔ Logs installation
+✔ Validates installation
+✔ Works on apt and yum systems
+
+
+
 #!/bin/bash
 set -e
 
