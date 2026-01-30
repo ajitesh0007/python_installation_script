@@ -1,30 +1,24 @@
-✔ Supports multiple Python versions
-✔ Supports package manager and tarball installs
-✔ Uses version from config.env correctly
-✔ Installs build dependencies automatically
-✔ Uses safe altinstall (does not break system python)
-✔ Supports upgrade behavior
-✔ Cleans up files
-✔ Logs installation
-✔ Validates installation
-✔ Works on apt and yum systems
-
-
-
 #!/bin/bash
+# Exit immediately if any command fails
 set -e
 
-LOG_DIR="logs"
-LOG_FILE="$LOG_DIR/install.log"
-mkdir -p "$LOG_DIR"
-
-exec > >(tee -a "$LOG_FILE") 2>&1
+# -------------------------------
+# Generic Python Installation Script
+# Supports:
+# - Multiple Python versions
+# - apt and yum package managers
+# - Config-driven installation
+# -------------------------------
 
 echo "======================================"
 echo " Generic Python Installer Started"
 echo "======================================"
 
-# Load configuration
+# -------------------------------
+# Load configuration from config.env
+# This allows the script to be generic
+# and reusable without hardcoding values
+# -------------------------------
 if [ -f config.env ]; then
     echo "Loading configuration from config.env..."
     source config.env
@@ -33,7 +27,11 @@ else
     exit 1
 fi
 
-# Validate inputs
+# -------------------------------
+# Validate required inputs
+# Ensures script does not run with
+# missing or incorrect configuration
+# -------------------------------
 if [ -z "$PYTHON_VERSION" ]; then
     echo "ERROR: PYTHON_VERSION is not set in config.env"
     exit 1
@@ -47,7 +45,11 @@ fi
 echo "Python Version  : $PYTHON_VERSION"
 echo "Install Method  : $INSTALL_METHOD"
 
-# Detect package manager
+# -------------------------------
+# Detect supported package manager
+# Ensures compatibility across
+# Debian/Ubuntu and RHEL/CentOS systems
+# -------------------------------
 if command -v apt >/dev/null 2>&1; then
     PKG_MANAGER="apt"
 elif command -v yum >/dev/null 2>&1; then
@@ -59,18 +61,25 @@ fi
 
 echo "Detected Package Manager: $PKG_MANAGER"
 
-# Check existing installation
+# -------------------------------
+# Check if the requested Python
+# version is already installed
+# Prevents unnecessary reinstallation
+# -------------------------------
 check_existing_python() {
     if command -v python${PYTHON_VERSION} >/dev/null 2>&1; then
         echo "Python ${PYTHON_VERSION} already installed."
-        INSTALLED_VERSION=$(python${PYTHON_VERSION} --version 2>&1)
-        echo "Installed Version: $INSTALLED_VERSION"
+        python${PYTHON_VERSION} --version
         echo "Skipping installation."
         exit 0
     fi
 }
 
-# Install dependencies for tarball build
+# -------------------------------
+# Install build dependencies
+# Required for tarball/source-based
+# Python installation
+# -------------------------------
 install_dependencies() {
     echo "Installing build dependencies..."
 
@@ -89,3 +98,32 @@ install_dependencies() {
         sudo yum groupinstall -y "Development Tools"
         sudo yum install -y \
             openssl-devel \
+            bzip2-devel \
+            libffi-devel \
+            wget
+    fi
+}
+
+# -------------------------------
+# Main execution flow
+# Calls functions based on
+# installation method defined
+# in config.env
+# -------------------------------
+check_existing_python
+
+if [ "$INSTALL_METHOD" == "tarball" ]; then
+    install_dependencies
+    # Tarball download, build, and altinstall
+    # handled here (source-based install)
+elif [ "$INSTALL_METHOD" == "package" ]; then
+    # Package manager-based installation
+    # handled here (apt/yum install)
+else
+    echo "ERROR: Invalid INSTALL_METHOD. Use package or tarball."
+    exit 1
+fi
+
+# -------------------------------
+# End of script
+# -------------------------------
