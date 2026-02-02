@@ -2,23 +2,17 @@
 # Exit immediately if any command fails
 set -e
 
-# -------------------------------
+# ------------------------------------
 # Generic Python Installation Script
-# Supports:
-# - Multiple Python versions
-# - apt and yum package managers
-# - Config-driven installation
-# -------------------------------
+# ------------------------------------
 
 echo "======================================"
 echo " Generic Python Installer Started"
 echo "======================================"
 
-# -------------------------------
-# Load configuration from config.env
-# This allows the script to be generic
-# and reusable without hardcoding values
-# -------------------------------
+# ------------------------------------
+# Load configuration
+# ------------------------------------
 if [ -f config.env ]; then
     echo "Loading configuration from config.env..."
     source config.env
@@ -27,29 +21,25 @@ else
     exit 1
 fi
 
-# -------------------------------
-# Validate required inputs
-# Ensures script does not run with
-# missing or incorrect configuration
-# -------------------------------
+# ------------------------------------
+# Validate inputs
+# ------------------------------------
 if [ -z "$PYTHON_VERSION" ]; then
-    echo "ERROR: PYTHON_VERSION is not set in config.env"
+    echo "ERROR: PYTHON_VERSION is not set"
     exit 1
 fi
 
 if [ -z "$INSTALL_METHOD" ]; then
-    echo "ERROR: INSTALL_METHOD is not set in config.env"
+    echo "ERROR: INSTALL_METHOD is not set"
     exit 1
 fi
 
 echo "Python Version  : $PYTHON_VERSION"
 echo "Install Method  : $INSTALL_METHOD"
 
-# -------------------------------
-# Detect supported package manager
-# Ensures compatibility across
-# Debian/Ubuntu and RHEL/CentOS systems
-# -------------------------------
+# ------------------------------------
+# Detect package manager
+# ------------------------------------
 if command -v apt >/dev/null 2>&1; then
     PKG_MANAGER="apt"
 elif command -v yum >/dev/null 2>&1; then
@@ -61,11 +51,9 @@ fi
 
 echo "Detected Package Manager: $PKG_MANAGER"
 
-# -------------------------------
-# Check if the requested Python
-# version is already installed
-# Prevents unnecessary reinstallation
-# -------------------------------
+# ------------------------------------
+# Check existing Python
+# ------------------------------------
 check_existing_python() {
     if command -v python${PYTHON_VERSION} >/dev/null 2>&1; then
         echo "Python ${PYTHON_VERSION} already installed."
@@ -75,11 +63,9 @@ check_existing_python() {
     fi
 }
 
-# -------------------------------
-# Install build dependencies
-# Required for tarball/source-based
-# Python installation
-# -------------------------------
+# ------------------------------------
+# Install dependencies (tarball)
+# ------------------------------------
 install_dependencies() {
     echo "Installing build dependencies..."
 
@@ -104,26 +90,66 @@ install_dependencies() {
     fi
 }
 
-# -------------------------------
-# Main execution flow
-# Calls functions based on
-# installation method defined
-# in config.env
-# -------------------------------
+# ------------------------------------
+# Package manager installation
+# ------------------------------------
+install_python_package() {
+    echo "Installing Python ${PYTHON_VERSION} using package manager..."
+
+    if [ "$PKG_MANAGER" == "apt" ]; then
+        sudo apt update
+        sudo apt install -y python${PYTHON_VERSION}
+    else
+        sudo yum install -y python${PYTHON_VERSION}
+    fi
+}
+
+# ------------------------------------
+# Tarball installation
+# ------------------------------------
+install_python_tarball() {
+    VERSION_FULL="$PYTHON_VERSION"
+    URL="https://www.python.org/ftp/python/${VERSION_FULL}/Python-${VERSION_FULL}.tgz"
+
+    echo "Downloading Python ${VERSION_FULL} source..."
+    wget -q $URL
+
+    tar -xzf Python-${VERSION_FULL}.tgz
+    cd Python-${VERSION_FULL}
+
+    echo "Configuring build..."
+    ./configure --enable-optimizations
+
+    echo "Compiling Python..."
+    make -j$(nproc)
+
+    echo "Installing Python (altinstall)..."
+    sudo make altinstall
+
+    cd ..
+}
+
+# ------------------------------------
+# Main execution
+# ------------------------------------
 check_existing_python
 
-if [ "$INSTALL_METHOD" == "tarball" ]; then
+if [ "$INSTALL_METHOD" == "package" ]; then
+    install_python_package
+elif [ "$INSTALL_METHOD" == "tarball" ]; then
     install_dependencies
-    # Tarball download, build, and altinstall
-    # handled here (source-based install)
-elif [ "$INSTALL_METHOD" == "package" ]; then
-    # Package manager-based installation
-    # handled here (apt/yum install)
+    install_python_tarball
 else
     echo "ERROR: Invalid INSTALL_METHOD. Use package or tarball."
     exit 1
 fi
 
-# -------------------------------
-# End of script
-# -------------------------------
+# ------------------------------------
+# Validation
+# ------------------------------------
+echo "Verifying installation..."
+python${PYTHON_VERSION} --version
+
+echo "======================================"
+echo " Python Installation Completed"
+echo "======================================"
