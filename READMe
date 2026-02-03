@@ -1,155 +1,109 @@
-#!/bin/bash
-# Exit immediately if any command fails
-set -e
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                  install.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
-# ------------------------------------
-# Generic Python Installation Script
-# ------------------------------------
+INSTALL_PREFIX="/usr/local"
+SUPPORTED_VERSIONS=("3.8" "3.9" "3.10" "3.11" "3.12")
 
-echo "======================================"
-echo " Generic Python Installer Started"
-echo "======================================"
+log() { echo "[INFO] $1"; }
+warn() { echo "[WARN] $1"; }
+fail() { echo "[ERROR] $1"; exit 1; }
 
-# ------------------------------------
-# Load configuration
-# ------------------------------------
-if [ -f config.env ]; then
-    echo "Loading configuration from config.env..."
-    source config.env
-else
-    echo "ERROR: config.env file not found!"
-    exit 1
-fi
+# OS check
+[ -f /etc/os-release ] || fail "Cannot detect OS"
+. /etc/os-release
+[ "$ID" = "ubuntu" ] || fail "Only Ubuntu supported"
 
-# ------------------------------------
-# Validate inputs
-# ------------------------------------
-if [ -z "$PYTHON_VERSION" ]; then
-    echo "ERROR: PYTHON_VERSION is not set"
-    exit 1
-fi
+# Show installed Pythons
+echo "Installed Python versions:"
+ls /usr/bin/python* /usr/local/bin/python* 2>/dev/null | grep -E 'python[0-9]+\.[0-9]+' || echo "None"
+echo
 
-if [ -z "$INSTALL_METHOD" ]; then
-    echo "ERROR: INSTALL_METHOD is not set"
-    exit 1
-fi
+# Select version
+echo "Supported versions:"
+for v in "${SUPPORTED_VERSIONS[@]}"; do echo " - $v"; done
+echo
 
-echo "Python Version  : $PYTHON_VERSION"
-echo "Install Method  : $INSTALL_METHOD"
+read -r -p "Enter Python version (e.g. 3.10): " PYTHON_VERSION
+[[ " ${SUPPORTED_VERSIONS[*]} " =~ " ${PYTHON_VERSION} " ]] || fail "Unsupported version"
 
-# ------------------------------------
-# Detect package manager
-# ------------------------------------
-if command -v apt >/dev/null 2>&1; then
-    PKG_MANAGER="apt"
-elif command -v yum >/dev/null 2>&1; then
-    PKG_MANAGER="yum"
-else
-    echo "ERROR: Supported package manager not found (apt/yum)"
-    exit 1
-fi
+# Select method
+read -r -p "Install method (package/tarball) [package]: " METHOD
+INSTALL_METHOD="${METHOD:-package}"
 
-echo "Detected Package Manager: $PKG_MANAGER"
+# Check existing installation
+UPGRADE=false
+if command -v python${PYTHON_VERSION} >/dev/null 2>&1; then
+    INSTALLED_VERSION=$(python${PYTHON_VERSION} --version | awk '{print $2}')
+    log "Python ${PYTHON_VERSION} already installed (version: ${INSTALLED_VERSION})"
 
-# ------------------------------------
-# Check existing Python
-# ------------------------------------
-check_existing_python() {
-    if command -v python${PYTHON_VERSION} >/dev/null 2>&1; then
-        echo "Python ${PYTHON_VERSION} already installed."
-        python${PYTHON_VERSION} --version
-        echo "Skipping installation."
+    read -r -p "Do you want to upgrade/reinstall Python ${PYTHON_VERSION}? (y/n): " CHOICE
+    if [ "$CHOICE" = "y" ]; then
+        UPGRADE=true
+        log "Upgrade selected"
+    else
+        log "Skipping installation"
         exit 0
     fi
-}
-
-# ------------------------------------
-# Install dependencies (tarball)
-# ------------------------------------
-install_dependencies() {
-    echo "Installing build dependencies..."
-
-    if [ "$PKG_MANAGER" == "apt" ]; then
-        sudo apt update
-        sudo apt install -y \
-            build-essential \
-            libssl-dev \
-            zlib1g-dev \
-            libffi-dev \
-            libbz2-dev \
-            libreadline-dev \
-            libsqlite3-dev \
-            wget
-    else
-        sudo yum groupinstall -y "Development Tools"
-        sudo yum install -y \
-            openssl-devel \
-            bzip2-devel \
-            libffi-devel \
-            wget
-    fi
-}
-
-# ------------------------------------
-# Package manager installation
-# ------------------------------------
-install_python_package() {
-    echo "Installing Python ${PYTHON_VERSION} using package manager..."
-
-    if [ "$PKG_MANAGER" == "apt" ]; then
-        sudo apt update
-        sudo apt install -y python${PYTHON_VERSION}
-    else
-        sudo yum install -y python${PYTHON_VERSION}
-    fi
-}
-
-# ------------------------------------
-# Tarball installation
-# ------------------------------------
-install_python_tarball() {
-    VERSION_FULL="$PYTHON_VERSION"
-    URL="https://www.python.org/ftp/python/${VERSION_FULL}/Python-${VERSION_FULL}.tgz"
-
-    echo "Downloading Python ${VERSION_FULL} source..."
-    wget -q $URL
-
-    tar -xzf Python-${VERSION_FULL}.tgz
-    cd Python-${VERSION_FULL}
-
-    echo "Configuring build..."
-    ./configure --enable-optimizations
-
-    echo "Compiling Python..."
-    make -j$(nproc)
-
-    echo "Installing Python (altinstall)..."
-    sudo make altinstall
-
-    cd ..
-}
-
-# ------------------------------------
-# Main execution
-# ------------------------------------
-check_existing_python
-
-if [ "$INSTALL_METHOD" == "package" ]; then
-    install_python_package
-elif [ "$INSTALL_METHOD" == "tarball" ]; then
-    install_dependencies
-    install_python_tarball
-else
-    echo "ERROR: Invalid INSTALL_METHOD. Use package or tarball."
-    exit 1
 fi
 
-# ------------------------------------
-# Validation
-# ------------------------------------
-echo "Verifying installation..."
-python${PYTHON_VERSION} --version
+apt_available() {
+    apt-cache show python${PYTHON_VERSION} >/dev/null 2>&1
+}
 
-echo "======================================"
-echo " Python Installation Completed"
-echo "======================================"
+install_tarball() {
+    log "Installing Python ${PYTHON_VERSION} from source"
+
+    sudo apt update -qq
+    sudo apt install -y build-essential libssl-dev zlib1g-dev \
+        libbz2-dev libreadline-dev libsqlite3-dev libffi-dev \
+        libncursesw5-dev xz-utils tk-dev wget
+
+    case "$PYTHON_VERSION" in
+        3.8) FULL="3.8.19" ;;
+        3.9) FULL="3.9.19" ;;
+        3.10) FULL="3.10.14" ;;
+        3.11) FULL="3.11.8" ;;
+        3.12) FULL="3.12.3" ;;
+        *) fail "Invalid version" ;;
+    esac
+
+    cd /tmp
+    rm -rf Python-${FULL}*
+    wget -q https://www.python.org/ftp/python/${FULL}/Python-${FULL}.tgz
+    tar -xzf Python-${FULL}.tgz
+    cd Python-${FULL}
+
+    ./configure --enable-optimizations --prefix=${INSTALL_PREFIX}
+    make -j"$(nproc)"
+    sudo make altinstall
+}
+
+# Install / Upgrade
+if [ "$INSTALL_METHOD" = "package" ]; then
+    log "Using package manager"
+
+    sudo apt update -qq
+    if apt_available; then
+        if [ "$UPGRADE" = true ]; then
+            sudo apt install -y --reinstall python${PYTHON_VERSION} \
+                python${PYTHON_VERSION}-venv python${PYTHON_VERSION}-dev
+        else
+            sudo apt install -y python${PYTHON_VERSION} \
+                python${PYTHON_VERSION}-venv python${PYTHON_VERSION}-dev
+        fi
+    else
+        warn "Not available via apt, switching to tarball"
+        install_tarball
+    fi
+else
+    install_tarball
+fi
+
+# Validation
+echo
+python${PYTHON_VERSION} --version
+which python${PYTHON_VERSION}
+
+log "Done"
+
